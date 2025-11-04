@@ -44,9 +44,14 @@ jobs:
             fi
             
             # Backup de certificados SSL (si existen)
+            # Solo backupear certificados, no logs ni archivos temporales
             if [ -d /etc/letsencrypt ]; then
               echo "📋 Backupeando certificados SSL..."
-              sudo cp -r /etc/letsencrypt "$BACKUP_DIR/letsencrypt" 2>/dev/null || echo "⚠️  No se pudo copiar /etc/letsencrypt"
+              mkdir -p "$BACKUP_DIR/letsencrypt"
+              # Solo copiar directorios live (certificados activos) y accounts (cuentas)
+              sudo cp -r /etc/letsencrypt/live "$BACKUP_DIR/letsencrypt/" 2>/dev/null || echo "⚠️  No se pudo copiar live"
+              sudo cp -r /etc/letsencrypt/accounts "$BACKUP_DIR/letsencrypt/" 2>/dev/null || echo "⚠️  No se pudo copiar accounts"
+              # Excluir logs, archives, renewal (puede regenerarse)
             fi
             
             # Backup de servicios systemd
@@ -84,9 +89,9 @@ jobs:
             uname -a > "$BACKUP_DIR/system-info.txt"
             cat /etc/os-release > "$BACKUP_DIR/os-release.txt" 2>/dev/null || echo "⚠️  No se pudo leer /etc/os-release"
             
-            # Listar paquetes instalados
+            # Listar paquetes instalados (solo nombres, no descripciones completas para reducir tamaño)
             echo "📋 Listando paquetes instalados..."
-            dpkg -l > "$BACKUP_DIR/installed-packages.txt" 2>/dev/null || echo "⚠️  No se pudo listar paquetes"
+            dpkg -l | awk '{print $2, $3}' > "$BACKUP_DIR/installed-packages.txt" 2>/dev/null || echo "⚠️  No se pudo listar paquetes"
             
             # Backup de usuarios y grupos
             echo "📋 Backupeando usuarios y grupos..."
@@ -108,8 +113,15 @@ EOF
             sudo tar -czf "$BACKUP_FILE" -C "$BACKUP_DIR" . 2>/dev/null
             sudo chmod 644 "$BACKUP_FILE"
             
+            BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
             echo "✅ Backup creado: $BACKUP_FILE"
-            echo "📁 Tamaño: $(du -h "$BACKUP_FILE" | cut -f1)"
+            echo "📁 Tamaño: $BACKUP_SIZE"
+            
+            # Verificar que el backup no sea demasiado grande (>100MB)
+            BACKUP_SIZE_BYTES=$(stat -f%z "$BACKUP_FILE" 2>/dev/null || stat -c%s "$BACKUP_FILE" 2>/dev/null || echo "0")
+            if [ "$BACKUP_SIZE_BYTES" -gt 104857600 ]; then
+              echo "⚠️  ADVERTENCIA: Backup mayor a 100MB ($BACKUP_SIZE)"
+            fi
             
             # Mover el archivo a un lugar accesible
             sudo mv "$BACKUP_FILE" ~/raspberry-backup-latest.tar.gz
