@@ -38,7 +38,10 @@ jobs:
         env:
           DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
           DUCKDNS_DOMAIN: ${{ steps.cname.outputs.domain }}
-          DUCKDNS_IP: ${{ secrets.DUCKDNS_IP || '185.199.108.153' }}
+          # IP por defecto: GitHub Pages (185.199.108.153)
+          # IP para subdominios de gkachele: Raspberry Pi (213.195.109.201)
+          DUCKDNS_IP_DEFAULT: ${{ secrets.DUCKDNS_IP || '185.199.108.153' }}
+          DUCKDNS_IP_RASPBERRY: ${{ secrets.DUCKDNS_IP_RASPBERRY || '213.195.109.201' }}
         run: |
           # Extraer el nombre del dominio sin .duckdns.org
           # Para subdominios: test.gkachele.duckdns.org → solo actualizar gkachele (dominio base)
@@ -46,10 +49,12 @@ jobs:
           FULL_DOMAIN=$(echo "$DUCKDNS_DOMAIN" | sed 's/\.duckdns\.org$//')
           
           # Si tiene subdominio (ej: test.gkachele), extraer solo el dominio base (gkachele)
+          IS_SUBDOMAIN=false
           if echo "$FULL_DOMAIN" | grep -q '\.'; then
             # Tiene subdominio: extraer solo el dominio base (última parte después del último punto)
             DOMAIN_NAME=$(echo "$FULL_DOMAIN" | awk -F'.' '{print $NF}')
             SUBDOMAIN=$(echo "$FULL_DOMAIN" | sed "s/\.${DOMAIN_NAME}$//")
+            IS_SUBDOMAIN=true
             echo "   ℹ️  Subdominio detectado: $SUBDOMAIN.$DOMAIN_NAME"
             echo "   ℹ️  Actualizando dominio base: $DOMAIN_NAME (DuckDNS maneja automáticamente los subdominios)"
           else
@@ -60,6 +65,17 @@ jobs:
           if [ -z "$DOMAIN_NAME" ]; then
             echo "❌ Error: No se pudo extraer el nombre del dominio"
             exit 1
+          fi
+          
+          # Determinar qué IP usar:
+          # - Si es subdominio de gkachele → usar IP de Raspberry Pi
+          # - Si no → usar IP por defecto (GitHub Pages)
+          if [ "$IS_SUBDOMAIN" = "true" ] && [ "$DOMAIN_NAME" = "gkachele" ]; then
+            DUCKDNS_IP="$DUCKDNS_IP_RASPBERRY"
+            echo "   🍓 Subdominio de gkachele detectado → usando IP de Raspberry Pi"
+          else
+            DUCKDNS_IP="$DUCKDNS_IP_DEFAULT"
+            echo "   ☁️  Dominio principal → usando IP por defecto (GitHub Pages)"
           fi
           
           echo "🔧 Actualizando DuckDNS..."
