@@ -41,8 +41,21 @@ jobs:
           DUCKDNS_IP: ${{ secrets.DUCKDNS_IP || '185.199.108.153' }}
         run: |
           # Extraer el nombre del dominio sin .duckdns.org
-          # Soporta subdominios: comodig.gkachele.duckdns.org → comodig.gkachele
-          DOMAIN_NAME=$(echo "$DUCKDNS_DOMAIN" | sed 's/\.duckdns\.org$//')
+          # Para subdominios: test.gkachele.duckdns.org → solo actualizar gkachele (dominio base)
+          # DuckDNS maneja automáticamente los subdominios cuando actualizas el dominio base
+          FULL_DOMAIN=$(echo "$DUCKDNS_DOMAIN" | sed 's/\.duckdns\.org$//')
+          
+          # Si tiene subdominio (ej: test.gkachele), extraer solo el dominio base (gkachele)
+          if echo "$FULL_DOMAIN" | grep -q '\.'; then
+            # Tiene subdominio: extraer solo el dominio base (última parte después del último punto)
+            DOMAIN_NAME=$(echo "$FULL_DOMAIN" | awk -F'.' '{print $NF}')
+            SUBDOMAIN=$(echo "$FULL_DOMAIN" | sed "s/\.${DOMAIN_NAME}$//")
+            echo "   ℹ️  Subdominio detectado: $SUBDOMAIN.$DOMAIN_NAME"
+            echo "   ℹ️  Actualizando dominio base: $DOMAIN_NAME (DuckDNS maneja automáticamente los subdominios)"
+          else
+            # No tiene subdominio: usar el dominio completo
+            DOMAIN_NAME="$FULL_DOMAIN"
+          fi
           
           if [ -z "$DOMAIN_NAME" ]; then
             echo "❌ Error: No se pudo extraer el nombre del dominio"
@@ -51,7 +64,7 @@ jobs:
           
           echo "🔧 Actualizando DuckDNS..."
           echo "   CNAME completo: $DUCKDNS_DOMAIN"
-          echo "   Dominio DuckDNS: $DOMAIN_NAME"
+          echo "   Dominio base DuckDNS: $DOMAIN_NAME"
           echo "   IP: $DUCKDNS_IP"
           
           if [ -z "$DUCKDNS_TOKEN" ]; then
