@@ -141,6 +141,8 @@ EOF
           password: ${{ secrets.RASPBERRY_PASSWORD }}
           source: "~/raspberry-backup-latest.tar.gz"
           target: "./raspberry-backup/"
+          strip_components: 0
+          rm: false
       
       - name: Subir backup a GitHub
         env:
