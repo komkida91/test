@@ -1,14 +1,18 @@
 name: Actualizar DuckDNS
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'CNAME'
+  # NOTA: Desactivado push para dominios principales - solo workflow_dispatch manual
+  # Los dominios principales NO deben actualizarse automáticamente
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'CNAME'
   workflow_dispatch: # Permite ejecutar manualmente
   # NOTA: Cron eliminado para evitar actualizaciones automáticas que cambian IPs
+  # NOTA: Push también desactivado para evitar cambios automáticos
   # DuckDNS mantiene las IPs estáticas sin necesidad de actualizaciones periódicas
+  # Solo se actualiza manualmente cuando es necesario (workflow_dispatch)
 
 permissions:
   contents: read
