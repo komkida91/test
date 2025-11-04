@@ -68,12 +68,15 @@ jobs:
           fi
           
           # Determinar qué IP usar:
-          # - Si es subdominio de gkachele → usar IP de Raspberry Pi
-          # - Si no → usar IP por defecto (GitHub Pages)
+          # - Si es subdominio de gkachele (ej: test.gkachele) → usar IP de Raspberry Pi
+          # - Si es dominio principal (gkachele, blowdance, dalmau-intendente) → usar IP de GitHub Pages
+          # - IMPORTANTE: gkachele.duckdns.org (sin subdominio) es dominio principal → GitHub Pages
           if [ "$IS_SUBDOMAIN" = "true" ] && [ "$DOMAIN_NAME" = "gkachele" ]; then
+            # Es un subdominio de gkachele (ej: test.gkachele.duckdns.org)
             DUCKDNS_IP="$DUCKDNS_IP_RASPBERRY"
             echo "   🍓 Subdominio de gkachele detectado → usando IP de Raspberry Pi"
           else
+            # Es un dominio principal (gkachele, blowdance, dalmau-intendente, etc.)
             DUCKDNS_IP="$DUCKDNS_IP_DEFAULT"
             echo "   ☁️  Dominio principal → usando IP por defecto (GitHub Pages)"
           fi
