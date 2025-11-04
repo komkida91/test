@@ -1,0 +1,140 @@
+name: Backup Configuración Raspberry Pi
+
+on:
+  schedule:
+    # Backup automático cada día a las 3 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Permite ejecutar manualmente
+
+permissions:
+  contents: write # Para hacer commit del backup
+
+jobs:
+  backup-config:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo test
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Backup configuración Nginx
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.RASPBERRY_HOST || 'komkida.duckdns.org' }}
+          username: ${{ secrets.RASPBERRY_USER || 'pi' }}
+          port: ${{ secrets.RASPBERRY_PORT || '2222' }}
+          password: ${{ secrets.RASPBERRY_PASSWORD }}
+          script: |
+            # Crear directorio de backup temporal
+            BACKUP_DIR="/tmp/raspberry-backup-$(date +%Y%m%d-%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            
+            echo "📦 Creando backup de configuración..."
+            
+            # Backup de Nginx
+            if [ -d /etc/nginx ]; then
+              echo "📋 Backupeando configuración de Nginx..."
+              sudo cp -r /etc/nginx "$BACKUP_DIR/nginx" 2>/dev/null || echo "⚠️  No se pudo copiar /etc/nginx"
+            fi
+            
+            # Backup de certificados SSL (si existen)
+            if [ -d /etc/letsencrypt ]; then
+              echo "📋 Backupeando certificados SSL..."
+              sudo cp -r /etc/letsencrypt "$BACKUP_DIR/letsencrypt" 2>/dev/null || echo "⚠️  No se pudo copiar /etc/letsencrypt"
+            fi
+            
+            # Backup de servicios systemd
+            if [ -d /etc/systemd/system ]; then
+              echo "📋 Backupeando servicios systemd..."
+              sudo cp -r /etc/systemd/system "$BACKUP_DIR/systemd" 2>/dev/null || echo "⚠️  No se pudo copiar /etc/systemd/system"
+            fi
+            
+            # Backup de configuración de red
+            if [ -f /etc/dhcpcd.conf ]; then
+              echo "📋 Backupeando configuración de red..."
+              sudo cp /etc/dhcpcd.conf "$BACKUP_DIR/dhcpcd.conf" 2>/dev/null || echo "⚠️  No se pudo copiar dhcpcd.conf"
+            fi
+            
+            # Backup de hosts
+            if [ -f /etc/hosts ]; then
+              echo "📋 Backupeando /etc/hosts..."
+              sudo cp /etc/hosts "$BACKUP_DIR/hosts" 2>/dev/null || echo "⚠️  No se pudo copiar /etc/hosts"
+            fi
+            
+            # Backup de DuckDNS script (si existe)
+            if [ -f /usr/local/bin/duckdns-update.sh ] || [ -f ~/duckdns-update.sh ]; then
+              echo "📋 Backupeando script DuckDNS..."
+              sudo cp /usr/local/bin/duckdns-update.sh "$BACKUP_DIR/duckdns-update.sh" 2>/dev/null || \
+              cp ~/duckdns-update.sh "$BACKUP_DIR/duckdns-update.sh" 2>/dev/null || echo "⚠️  No se encontró script DuckDNS"
+            fi
+            
+            # Backup de cron jobs
+            echo "📋 Backupeando cron jobs..."
+            crontab -l > "$BACKUP_DIR/crontab.txt" 2>/dev/null || echo "⚠️  No hay cron jobs"
+            sudo crontab -l > "$BACKUP_DIR/crontab-root.txt" 2>/dev/null || echo "⚠️  No hay cron jobs de root"
+            
+            # Backup de información del sistema
+            echo "📋 Backupeando información del sistema..."
+            uname -a > "$BACKUP_DIR/system-info.txt"
+            cat /etc/os-release > "$BACKUP_DIR/os-release.txt" 2>/dev/null || echo "⚠️  No se pudo leer /etc/os-release"
+            
+            # Listar paquetes instalados
+            echo "📋 Listando paquetes instalados..."
+            dpkg -l > "$BACKUP_DIR/installed-packages.txt" 2>/dev/null || echo "⚠️  No se pudo listar paquetes"
+            
+            # Backup de usuarios y grupos
+            echo "📋 Backupeando usuarios y grupos..."
+            cat /etc/passwd > "$BACKUP_DIR/passwd.txt" 2>/dev/null || echo "⚠️  No se pudo copiar /etc/passwd"
+            cat /etc/group > "$BACKUP_DIR/group.txt" 2>/dev/null || echo "⚠️  No se pudo copiar /etc/group"
+            
+            # Crear archivo de información del backup
+            cat > "$BACKUP_DIR/backup-info.txt" << EOF
+Backup creado: $(date)
+Hostname: $(hostname)
+IP: $(hostname -I | awk '{print $1}')
+Usuario: $(whoami)
+Sistema: $(uname -a)
+EOF
+            
+            # Crear tar.gz del backup
+            cd /tmp
+            BACKUP_FILE="raspberry-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+            sudo tar -czf "$BACKUP_FILE" -C "$BACKUP_DIR" . 2>/dev/null
+            sudo chmod 644 "$BACKUP_FILE"
+            
+            echo "✅ Backup creado: $BACKUP_FILE"
+            echo "📁 Tamaño: $(du -h "$BACKUP_FILE" | cut -f1)"
+            
+            # Mover el archivo a un lugar accesible
+            sudo mv "$BACKUP_FILE" ~/raspberry-backup-latest.tar.gz
+            sudo chown $USER:$USER ~/raspberry-backup-latest.tar.gz
+            
+            # Limpiar directorio temporal
+            sudo rm -rf "$BACKUP_DIR"
+            
+            echo "✅ Backup completado: ~/raspberry-backup-latest.tar.gz"
+      
+      - name: Descargar backup
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.RASPBERRY_HOST || 'komkida.duckdns.org' }}
+          username: ${{ secrets.RASPBERRY_USER || 'pi' }}
+          port: ${{ secrets.RASPBERRY_PORT || '2222' }}
+          password: ${{ secrets.RASPBERRY_PASSWORD }}
+          source: "~/raspberry-backup-latest.tar.gz"
+          target: "./raspberry-backup/"
+      
+      - name: Subir backup a GitHub
+        run: |
+          # Crear directorio si no existe
+          mkdir -p raspberry-backup
+          
+          # Commit y push del backup
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add raspberry-backup/
+          git commit -m "🍓 Backup configuración Raspberry Pi - $(date +%Y-%m-%d)" || echo "No hay cambios"
+          git push
+

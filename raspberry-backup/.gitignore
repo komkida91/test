@@ -1,0 +1,7 @@
+# Archivos temporales de backup
+*.tmp
+*.log
+
+# Archivos de backup antiguos (mantener solo los últimos)
+# Los backups se mantienen en el directorio con nombre de fecha
+
