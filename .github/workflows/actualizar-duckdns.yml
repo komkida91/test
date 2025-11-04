@@ -7,9 +7,8 @@ on:
     paths:
       - 'CNAME'
   workflow_dispatch: # Permite ejecutar manualmente
-  schedule:
-    # Actualizar DuckDNS cada 30 minutos para mantenerlo activo
-    - cron: '*/30 * * * *'
+  # NOTA: Cron eliminado para evitar actualizaciones automáticas que cambian IPs
+  # DuckDNS mantiene las IPs estáticas sin necesidad de actualizaciones periódicas
 
 permissions:
   contents: read
@@ -69,16 +68,34 @@ jobs:
           
           # Determinar qué IP usar:
           # - Si es subdominio de gkachele (ej: test.gkachele) → usar IP de Raspberry Pi
-          # - Si es dominio principal (gkachele, blowdance, dalmau-intendente) → usar IP de GitHub Pages
+          # - Si es dominio principal (gkachele, blowdance, dalmau-intendente) → usar IP de GitHub Pages (185.199.108.153)
           # - IMPORTANTE: gkachele.duckdns.org (sin subdominio) es dominio principal → GitHub Pages
-          if [ "$IS_SUBDOMAIN" = "true" ] && [ "$DOMAIN_NAME" = "gkachele" ]; then
+          # - DOMINIOS PRINCIPALES DEBEN SER ESTÁTICOS: gkachele, blowdance, dalmau-intendente → SIEMPRE 185.199.108.153
+          
+          # Lista de dominios principales que DEBEN ser estáticos (GitHub Pages)
+          MAIN_DOMAINS="gkachele blowdance dalmau-intendente"
+          IS_MAIN_DOMAIN=false
+          
+          for MAIN_DOMAIN in $MAIN_DOMAINS; do
+            if [ "$DOMAIN_NAME" = "$MAIN_DOMAIN" ]; then
+              IS_MAIN_DOMAIN=true
+              break
+            fi
+          done
+          
+          if [ "$IS_MAIN_DOMAIN" = "true" ]; then
+            # Es un dominio principal → SIEMPRE usar IP de GitHub Pages (estática)
+            DUCKDNS_IP="185.199.108.153"
+            echo "   🔒 Dominio principal detectado ($DOMAIN_NAME) → IP estática GitHub Pages (185.199.108.153)"
+            echo "   ⚠️  Este dominio DEBE mantener esta IP estática"
+          elif [ "$IS_SUBDOMAIN" = "true" ] && [ "$DOMAIN_NAME" = "gkachele" ]; then
             # Es un subdominio de gkachele (ej: test.gkachele.duckdns.org)
             DUCKDNS_IP="$DUCKDNS_IP_RASPBERRY"
             echo "   🍓 Subdominio de gkachele detectado → usando IP de Raspberry Pi"
           else
-            # Es un dominio principal (gkachele, blowdance, dalmau-intendente, etc.)
+            # Otro dominio o subdominio → usar IP por defecto (GitHub Pages)
             DUCKDNS_IP="$DUCKDNS_IP_DEFAULT"
-            echo "   ☁️  Dominio principal → usando IP por defecto (GitHub Pages)"
+            echo "   ☁️  Dominio/subdominio → usando IP por defecto (GitHub Pages)"
           fi
           
           echo "🔧 Actualizando DuckDNS..."
@@ -94,10 +111,42 @@ jobs:
             exit 1
           fi
           
-          # Actualizar DuckDNS usando la API
+          # Verificar IP actual antes de actualizar (evitar cambios innecesarios)
+          echo "🔍 Verificando IP actual de DuckDNS..."
+          CURRENT_IP=$(dig +short "$DUCKDNS_DOMAIN" @8.8.8.8 2>/dev/null | head -n1 || echo "")
+          
+          if [ -n "$CURRENT_IP" ]; then
+            echo "   IP actual: $CURRENT_IP"
+            echo "   IP objetivo: $DUCKDNS_IP"
+            
+            if [ "$CURRENT_IP" = "$DUCKDNS_IP" ]; then
+              echo "✅ IP ya es correcta, no se necesita actualizar"
+              echo "   IP actual: $CURRENT_IP"
+              echo "   IP objetivo: $DUCKDNS_IP"
+              exit 0
+            else
+              if [ "$IS_MAIN_DOMAIN" = "true" ]; then
+                echo "⚠️  ⚠️  ⚠️  ATENCIÓN: Dominio principal con IP incorrecta"
+                echo "   Dominio principal: $DOMAIN_NAME"
+                echo "   IP actual (incorrecta): $CURRENT_IP"
+                echo "   IP objetivo (correcta): $DUCKDNS_IP"
+                echo "   🔧 Corrigiendo a IP estática de GitHub Pages..."
+              else
+                echo "⚠️  IP diferente detectada, actualizando a IP fija..."
+              fi
+            fi
+          else
+            if [ "$IS_MAIN_DOMAIN" = "true" ]; then
+              echo "⚠️  No se pudo verificar IP actual, pero es dominio principal → actualizando a IP estática..."
+            else
+              echo "⚠️  No se pudo verificar IP actual, procediendo con actualización..."
+            fi
+          fi
+          
+          # Actualizar DuckDNS usando la API con IP fija
           UPDATE_URL="https://www.duckdns.org/update?domains=$DOMAIN_NAME&token=$DUCKDNS_TOKEN&ip=$DUCKDNS_IP"
           
-          echo "📡 Enviando actualización a DuckDNS..."
+          echo "📡 Enviando actualización a DuckDNS con IP fija..."
           echo "   URL: https://www.duckdns.org/update?domains=$DOMAIN_NAME&token=***&ip=$DUCKDNS_IP"
           
           # Capturar respuesta y código de estado
@@ -109,10 +158,21 @@ jobs:
           echo "   Respuesta: $RESPONSE_BODY"
           
           if [ "$HTTP_CODE" = "200" ] && [ "$RESPONSE_BODY" = "OK" ]; then
-            echo "✅ DuckDNS actualizado correctamente"
+            echo "✅ DuckDNS actualizado correctamente con IP fija"
             echo "   Dominio base: $DOMAIN_NAME"
             echo "   Subdominio: $DUCKDNS_DOMAIN"
-            echo "   IP: $DUCKDNS_IP"
+            echo "   IP fija configurada: $DUCKDNS_IP"
+            
+            # Verificar que la actualización se aplicó
+            sleep 5
+            VERIFY_IP=$(dig +short "$DUCKDNS_DOMAIN" @8.8.8.8 2>/dev/null | head -n1 || echo "")
+            if [ "$VERIFY_IP" = "$DUCKDNS_IP" ]; then
+              echo "✅ Verificación: IP actualizada correctamente a $DUCKDNS_IP"
+            else
+              echo "⚠️  Verificación: IP aún no se ha propagado (puede tardar unos minutos)"
+              echo "   IP esperada: $DUCKDNS_IP"
+              echo "   IP actual: $VERIFY_IP"
+            fi
           else
             echo "❌ Error al actualizar DuckDNS"
             echo "   Código HTTP: $HTTP_CODE"
