@@ -1,0 +1,103 @@
+name: Actualizar DuckDNS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'CNAME'
+  workflow_dispatch: # Permite ejecutar manualmente
+  schedule:
+    # Actualizar DuckDNS cada 30 minutos para mantenerlo activo
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  actualizar-duckdns:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Verificar CNAME
+        id: cname
+        run: |
+          if [ -f "CNAME" ]; then
+            CNAME_DOMAIN=$(cat CNAME | tr -d '\n\r ' | head -1)
+            echo "domain=$CNAME_DOMAIN" >> $GITHUB_OUTPUT
+            echo "✅ CNAME encontrado: $CNAME_DOMAIN"
+          else
+            echo "⚠️  No se encontró archivo CNAME"
+            echo "domain=" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Actualizar DuckDNS
+        if: steps.cname.outputs.domain != ''
+        env:
+          DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
+          DUCKDNS_DOMAIN: ${{ steps.cname.outputs.domain }}
+          DUCKDNS_IP: ${{ secrets.DUCKDNS_IP || '185.199.108.153' }}
+        run: |
+          # Extraer el nombre del dominio sin .duckdns.org
+          # Soporta subdominios: comodig.gkachele.duckdns.org → comodig.gkachele
+          DOMAIN_NAME=$(echo "$DUCKDNS_DOMAIN" | sed 's/\.duckdns\.org$//')
+          
+          if [ -z "$DOMAIN_NAME" ]; then
+            echo "❌ Error: No se pudo extraer el nombre del dominio"
+            exit 1
+          fi
+          
+          echo "🔧 Actualizando DuckDNS..."
+          echo "   CNAME completo: $DUCKDNS_DOMAIN"
+          echo "   Dominio DuckDNS: $DOMAIN_NAME"
+          echo "   IP: $DUCKDNS_IP"
+          
+          if [ -z "$DUCKDNS_TOKEN" ]; then
+            echo "⚠️  DUCKDNS_TOKEN no configurado en secrets"
+            echo "   Configurar en: Settings → Secrets and variables → Actions"
+            echo "   Nombre: DUCKDNS_TOKEN"
+            echo "   Valor: Tu token de DuckDNS"
+            exit 1
+          fi
+          
+          # Actualizar DuckDNS usando la API
+          UPDATE_URL="https://www.duckdns.org/update?domains=$DOMAIN_NAME&token=$DUCKDNS_TOKEN&ip=$DUCKDNS_IP"
+          
+          echo "📡 Enviando actualización a DuckDNS..."
+          RESPONSE=$(curl -s "$UPDATE_URL")
+          
+          if [ "$RESPONSE" = "OK" ]; then
+            echo "✅ DuckDNS actualizado correctamente"
+            echo "   Dominio: $DUCKDNS_DOMAIN"
+            echo "   IP: $DUCKDNS_IP"
+          else
+            echo "❌ Error al actualizar DuckDNS"
+            echo "   Respuesta: $RESPONSE"
+            echo ""
+            echo "   Posibles causas:"
+            echo "   - Token inválido"
+            echo "   - Dominio no existe"
+            echo "   - Problema con la API de DuckDNS"
+            exit 1
+          fi
+      
+      - name: Verificar estado
+        if: steps.cname.outputs.domain != ''
+        run: |
+          DOMAIN_NAME=$(echo "${{ steps.cname.outputs.domain }}" | sed 's/\.duckdns\.org$//')
+          echo "🔍 Verificando estado de DuckDNS..."
+          
+          # Verificar DNS con dig o nslookup
+          if command -v dig &> /dev/null; then
+            DNS_RESULT=$(dig +short "${{ steps.cname.outputs.domain }}" @8.8.8.8 || echo "")
+            if [ -n "$DNS_RESULT" ]; then
+              echo "✅ DNS resuelve a: $DNS_RESULT"
+            else
+              echo "⚠️  DNS aún no resuelve (puede tardar unos minutos)"
+            fi
+          else
+            echo "ℹ️  dig no disponible, saltando verificación DNS"
+          fi
+
