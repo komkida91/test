@@ -79,20 +79,31 @@ jobs:
           UPDATE_URL="https://www.duckdns.org/update?domains=$DOMAIN_NAME&token=$DUCKDNS_TOKEN&ip=$DUCKDNS_IP"
           
           echo "📡 Enviando actualización a DuckDNS..."
-          RESPONSE=$(curl -s "$UPDATE_URL")
+          echo "   URL: https://www.duckdns.org/update?domains=$DOMAIN_NAME&token=***&ip=$DUCKDNS_IP"
           
-          if [ "$RESPONSE" = "OK" ]; then
+          # Capturar respuesta y código de estado
+          RESPONSE=$(curl -s -w "\n%{http_code}" "$UPDATE_URL" 2>&1)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "   Código HTTP: $HTTP_CODE"
+          echo "   Respuesta: $RESPONSE_BODY"
+          
+          if [ "$HTTP_CODE" = "200" ] && [ "$RESPONSE_BODY" = "OK" ]; then
             echo "✅ DuckDNS actualizado correctamente"
-            echo "   Dominio: $DUCKDNS_DOMAIN"
+            echo "   Dominio base: $DOMAIN_NAME"
+            echo "   Subdominio: $DUCKDNS_DOMAIN"
             echo "   IP: $DUCKDNS_IP"
           else
             echo "❌ Error al actualizar DuckDNS"
-            echo "   Respuesta: $RESPONSE"
+            echo "   Código HTTP: $HTTP_CODE"
+            echo "   Respuesta: $RESPONSE_BODY"
             echo ""
             echo "   Posibles causas:"
             echo "   - Token inválido"
-            echo "   - Dominio no existe"
+            echo "   - Dominio no existe en DuckDNS"
             echo "   - Problema con la API de DuckDNS"
+            echo "   - Problema de red"
             exit 1
           fi
       
