@@ -143,15 +143,24 @@ EOF
           target: "./raspberry-backup/"
       
       - name: Subir backup a GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Crear directorio si no existe
           mkdir -p raspberry-backup
           
-          # Commit y push del backup
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git add raspberry-backup/
-          git commit -m "🍓 Backup configuración Raspberry Pi - $(date +%Y-%m-%d)" || echo "No hay cambios"
-          git push
+          # Verificar si hay archivos de backup
+          if [ -n "$(ls -A raspberry-backup/*.tar.gz 2>/dev/null)" ]; then
+            echo "✅ Archivos de backup encontrados"
+            
+            # Commit y push del backup
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            git add raspberry-backup/*.tar.gz
+            git commit -m "🍓 Backup configuración Raspberry Pi - $(date +%Y-%m-%d)" || echo "No hay cambios"
+            git push
+          else
+            echo "⚠️  No se encontraron archivos de backup para subir"
+          fi
 
