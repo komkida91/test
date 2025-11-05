@@ -41,6 +41,22 @@
             margin-bottom: 30px;
             opacity: 0.9;
         }
+
+        /* Marca de agua de protección */
+        body::after {
+            content: '© GKACHELE 2025';
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.03);
+            font-weight: bold;
+            z-index: -1;
+            pointer-events: none;
+            user-select: none;
+            transform: rotate(-45deg);
+            font-family: 'Arial', sans-serif;
+        }
     </style>
 </head>
 <body>
@@ -48,6 +64,12 @@
         <h1>🚧 Sitio en Construcción</h1>
         <p>Estamos preparando tu página web profesional</p>
         <p style="font-size: 1rem; opacity: 0.7;">En breve estará lista</p>
+        <p style="font-size: 0.85rem; opacity: 0.6; margin-top: 2rem;">
+            Desarrollado desde noviembre 2025 por <strong>GKACHELE</strong>
+        </p>
+        <p style="font-size: 0.7rem; opacity: 0.5; margin-top: 0.5rem;">
+            Código propiedad de GKACHELE © 2025 - Prohibida su reproducción sin autorización
+        </p>
     </div>
 </body>
 </html>

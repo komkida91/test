@@ -133,6 +133,7 @@ EOF
             echo "✅ Backup completado: ~/raspberry-backup-latest.tar.gz"
       
       - name: Descargar backup
+        continue-on-error: true
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.RASPBERRY_HOST || 'komkida.duckdns.org' }}
@@ -152,8 +153,9 @@ EOF
           mkdir -p raspberry-backup
           
           # Verificar si hay archivos de backup
-          if [ -n "$(ls -A raspberry-backup/*.tar.gz 2>/dev/null)" ]; then
+          if ls raspberry-backup/*.tar.gz 1> /dev/null 2>&1; then
             echo "✅ Archivos de backup encontrados"
+            ls -lh raspberry-backup/*.tar.gz
             
             # Commit y push del backup
             git config user.name "github-actions[bot]"
@@ -162,7 +164,10 @@ EOF
             git add raspberry-backup/*.tar.gz
             git commit -m "🍓 Backup configuración Raspberry Pi - $(date +%Y-%m-%d)" || echo "No hay cambios"
             git push
+            echo "✅ Backup subido exitosamente"
           else
             echo "⚠️  No se encontraron archivos de backup para subir"
+            echo "   Esto es normal si es la primera ejecución o si el backup aún no se creó"
+            exit 0
           fi
 
